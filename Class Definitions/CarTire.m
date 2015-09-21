@@ -1,0 +1,521 @@
+classdef CarTire < handle
+    %CarTire is an object class used in the SAE Lap Sim in conjuction with
+    %several other classes to build a Car class object.
+    %   The Car tire is currently defined by it's GG curve (currently
+    %   assumed to be elliptical), rolling resistance, weight, system CG,
+    %   mass moment of inertia about the CG, rotational inertia, effective
+    %   radius.
+    
+    properties
+        MaxForwardAcceleration  % Max non turning acceleration on GG curve
+        MaxBrakingAcceleration 
+        MaxLateralAcceleration % Max turning acceleration on GG curve
+        RollingResistance % Constant rolling resistance coefficient
+        SpringRate
+        J % Rotational inertia (lbf in^2)
+        Radius % Effective radius (in)
+        TireModel
+        Name = '';
+    end
+    
+    methods
+        function T = CarTire(TM,K,R,Resistance,J)
+            % CarTire Constructor method
+            %
+            % This method constructs an object of type CarTire.  To define
+            % an object of this class, input a maximum forward
+            % acceleration, maximum lateral acceleration, a radius, a
+            % rolling resistance coefficient, a weight, a center of
+            % gravity, a moment of inertia about the CG, and a rotational
+            % moment of inertia about the center of the tire.
+            %
+            % INPUTS
+            % Name          Type          Units   Description            
+            %**************************************************************
+            % MaxFA         float         G's     Maximum forward or
+            %                                     reverse acceleration of 
+            %                                     the tire.
+            %
+            % R             float         in      Effective tire radius
+            %
+            % Resistance    float         N/A     Rolling resistance
+            %                                     coefficient.
+            %
+            % Weight        float         lbf     Weight of all four tires
+            %
+            % CG            1x3 Array     in      Center of gravity
+            %                                     location on vehicle
+            %
+            % J             float         lb in^2 Mass moment of inertia
+            %                                     acted on by wheel torque
+            %
+            % OUTPUTS
+            % Name          Type          Units   Description            
+            %**************************************************************
+            % T             CarTire       N/A     CarTire Object
+            %
+            % VARIABLES
+            % Name          Type          Units   Description            
+            %**************************************************************
+            % NONE
+            %
+            % FUNCTIONS
+            % Name          Location         Description            
+            %**************************************************************
+            % NONE    
+            
+            % Assigns values to tire object properties
+            T.SpringRate = K;
+            T.Radius = R;
+            T.RollingResistance = Resistance;
+            T.J = J;
+            T.TireModel = TM;
+        end
+        
+        function LateralGCalculator(T,CarObject,Balance,DisplayFlag)
+            
+            Ws = CarObject.SprungMass;
+            Wfus = CarObject.UnsprungMass(1);
+            Wrus = CarObject.UnsprungMass(2);
+            Tf = CarObject.Chassis.Track(1);
+            Tr = CarObject.Chassis.Track(2);
+            hfus = CarObject.Suspension.UnsprungHeight(1);
+            hrus = CarObject.Suspension.UnsprungHeight(2);
+            hfrc = CarObject.Suspension.RollCenters(1);
+            hrrc = CarObject.Suspension.RollCenters(2);
+            hCG = CarObject.CG(3) - (hfrc + hrrc)/2;
+            b = CarObject.CG(1)/CarObject.Chassis.Length;
+            a = 1 - b;
+            FR = [ a b ];
+            
+            K1F = CarObject.Suspension.LinearSpring(1);
+            K1R = CarObject.Suspension.LinearSpring(2);
+            KarbF = CarObject.Suspension.ARB(1);
+            KarbR = CarObject.Suspension.ARB(2);
+            K2  = T.SpringRate;
+            
+            Kf = ((1/(K1F*Tf^2/2 + KarbF) + 2/(K2*Tf^2))^-1);
+            Kr = ((1/(K1R*Tr^2/2 + KarbR) + 2/(K2*Tr^2))^-1);
+            
+            Gs = (0:0.01:2)';
+            
+            UnbalanceFlag = 1;
+            
+            while true
+            
+                Fz = LateralWeightTransfer( Gs,Ws,Wfus,Wrus,FR,Tf,Tr,Kf,Kr,hCG,hfus,hrus,hfrc,hrrc );
+
+                [Fy,SA] = T.TireModel(Fz,'Lateral');
+
+                FyFront = Fy(:,1) + Fy(:,2);
+                FyRear  = Fy(:,3) + Fy(:,4);
+
+                W = Ws + Wrus + Wfus;
+                Wf = W*FR(1);
+                Wr = W*FR(2);
+
+                FrontGs = FyFront/Wf;
+                RearGs  = FyRear/Wr;
+
+                OutGs = zeros(length(FrontGs),1);
+
+                I = FrontGs > RearGs;
+                OutGs(I) = RearGs(I);
+                I = RearGs >= FrontGs;
+                OutGs(I) = FrontGs(I);
+
+                Difference = OutGs - Gs;
+                I1 = find(Difference >= 0,1,'last');
+                I2 = find(Difference < 0, 1,'first');
+
+                Diff1 = abs(Difference(I1));
+                Diff2 = abs(Difference(I2));
+
+                if Diff1 > Diff2
+                    I = I2;
+                else
+                    I = I1;
+                end
+                
+                if strcmp(Balance,'Balance')
+                
+                    if UnbalanceFlag
+                        
+                        UnbalancedG = OutGs(I);
+                        UnbalanceFlag = 0;
+                        
+                    end
+                    
+                    Diff = FrontGs(I) - RearGs(I);
+                
+                    if abs(Diff) > 0.01
+                        Adjustment = abs(Diff/max(FrontGs(I),RearGs(I)))*min(Kr,Kf);
+                        if Diff > 0
+                            Kr = Kr - Adjustment;
+                            Kf = Kf + Adjustment;
+                        else
+                            Kr = Kr + Adjustment;
+                            Kf = Kf - Adjustment;
+                        end
+                    else
+                        if DisplayFlag
+                            disp(['Front Roll Stiffness: ',num2str(Kf), ' in-lbf/rad'])
+                            disp(['Rear Roll Stiffness:  ',num2str(Kr), ' in-lbf/rad'])
+                            disp(['Unbalanced Gs: ', num2str(UnbalancedG)])
+                            disp(['Balanced Gs:   ', num2str(OutGs(I))])
+                        end
+                        break
+                    end
+                
+                else
+                    break
+                end
+            
+            end
+            
+            if Fz(171,1) <= 0
+                disp('Warning, car fails tilt test')
+            elseif Fz(I,1) <= 0
+                disp('Warning, car flips before max lateral acceleration acheived')
+            end
+               
+            
+            T.MaxLateralAcceleration = OutGs(I);
+            
+        end
+        
+        function LongitudinalGCalculator(T,CarObject)
+            
+            Kf = CarObject.Suspension.LinearSpring(1);
+            Kr = CarObject.Suspension.LinearSpring(2);
+            Kt = T.SpringRate;
+            Ws = CarObject.SprungMass;
+            Wfus = CarObject.UnsprungMass(1);
+            Wrus = CarObject.UnsprungMass(2);
+            hCG = CarObject.CG(3);
+            PC = CarObject.Suspension.PitchCenter;
+            L = CarObject.Chassis.Length;
+            b = CarObject.CG(1)/CarObject.Chassis.Length;
+            a = 1 - b;
+            FR = [ a b ];
+            
+            Gs = (0:0.01:2)';
+            
+            Drive = CarObject.Motor.Drive;
+            
+            Fz = LongitudinalWeightTransfer( Kf, Kr, Kt, Gs, Ws, Wfus, Wrus, hCG, PC, FR, L );
+
+            [Fx,SR] = T.TireModel(Fz,'Longitudinal');
+
+            if strcmp(Drive,'RWD')
+                FxOut  = Fx(:,3) + Fx(:,4);
+            elseif strcmp (Drive,'AWD')
+                FxOut = Fx(:,1) + Fx(:,2) + Fx(:,3) + Fx(:,4);
+            end
+
+            W = Ws + Wrus + Wfus;
+            OutGs = FxOut/W;
+
+            Difference = OutGs - Gs;
+            I1 = find(Difference >= 0,1,'last');
+            I2 = find(Difference < 0, 1,'first');
+
+            Diff1 = abs(Difference(I1));
+            Diff2 = abs(Difference(I2));
+
+            if Diff1 > Diff2
+                I = I2;
+            else
+                I = I1;
+            end
+            
+            T.MaxForwardAcceleration = OutGs(I);
+            
+            Gs = -(0:0.01:5)';
+            
+            Fz = LongitudinalWeightTransfer( Kf, Kr, Kt, Gs, Ws, Wfus, Wrus, hCG, PC, FR, L );
+            
+            I = find(Fz(:,3:4) < 0);
+            
+            if I
+                Fz = Fz(1:I(1)-1,:);
+                Gs = Gs(1:I(1)-1);
+            end
+            
+            [Fx,SR] = T.TireModel(Fz,'Longitudinal');
+
+            FxTotal = Fx(:,1) + Fx(:,2) + Fx(:,3) + Fx(:,4);
+            
+            OutGs = -FxTotal/W;
+            
+            Difference = OutGs - Gs;
+            I1 = find(Difference >= 0,1,'last');
+            I2 = find(Difference < 0, 1,'first');
+
+            Diff1 = abs(Difference(I1));
+            Diff2 = abs(Difference(I2));
+
+            if Diff1 > Diff2
+                I = I2;
+            else
+                I = I1;
+            end
+
+            if I
+           
+                T.MaxBrakingAcceleration = OutGs(I);
+                
+            else
+                disp('Warning, car flips before brake lockup')
+                T.MaxBrakingAcceleration = OutGs(end);
+                
+            end
+            
+        end
+ 
+        function LongA = GGCurve(T,LateralA,BrakeThrottle)
+            % CarTire GGCurve Method
+            %
+            % This method returns an array of possible longitudinal
+            % accelerations that are possible from a given array of lateral
+            % accelerations.  Currently assumes GG curve is symmetric
+            % ellipse.
+            %
+            % INPUTS
+            % Name          Type          Units   Description            
+            %**************************************************************
+            % T             TireObject    N/A     Tire Object for the given
+            %                                     GG curve
+            %
+            % LateralA      Nx1 array     G's     Lateral Acceleration for
+            %                                     which a maximum forward/
+            %                                     backward acceleration is 
+            %                                     desired from the car tire
+            % OUTPUTS
+            % Name          Type          Units   Description            
+            %**************************************************************
+            % LongA         Nx1 array     G's     Maximum longitudinal
+            %                                     acceleration for given 
+            %                                     lateral acceleration
+            %
+            % VARIABLES
+            % Name          Type          Units   Description            
+            %**************************************************************
+            % NONE
+            %
+            % FUNCTIONS
+            % Name          Location         Description            
+            %**************************************************************
+            % NONE    
+            
+            if strcmp(BrakeThrottle,'Throttle')
+                LongA = T.MaxForwardAcceleration*sqrt(1-(LateralA/T.MaxLateralAcceleration).^2);
+            elseif strcmp(BrakeThrottle,'Brake')
+                LongA = abs(T.MaxBrakingAcceleration*sqrt(1-(LateralA/T.MaxLateralAcceleration).^2));
+            end
+        end
+        
+        function PlotGGCurve(T)
+            LatG = linspace(-T.MaxLateralAcceleration,T.MaxLateralAcceleration,100);
+            
+            LongForG = -T.GGCurve(abs(LatG),'Throttle');
+            LongBacG = T.GGCurve(abs(LatG),'Brake');
+            
+            figure
+            plot(LatG,LongForG,'b',LatG,LongBacG,'b')
+            grid on
+            xlabel('Lateral Gs')
+            ylabel('Longitudinal Gs')
+            
+        end
+        
+        function [Fz,Fy,Fx,Mz,My,Mx,LatGs,LongGs] = ContactForces(T,CarObject)
+            
+            Ws = CarObject.SprungMass;
+            Wfus = CarObject.UnsprungMass(1);
+            Wrus = CarObject.UnsprungMass(2);
+            Tf = CarObject.Chassis.Track(1);
+            Tr = CarObject.Chassis.Track(2);
+            hfus = CarObject.Suspension.UnsprungHeight(1);
+            hrus = CarObject.Suspension.UnsprungHeight(2);
+            hfrc = CarObject.Suspension.RollCenters(1);
+            hrrc = CarObject.Suspension.RollCenters(2);
+            hCG = CarObject.CG(3) - (hfrc + hrrc)/2;
+            b = CarObject.CG(1)/CarObject.Chassis.Length;
+            a = 1 - b;
+            FR = [ a b ];
+            
+            K1F = CarObject.Suspension.LinearSpring(1);
+            K1R = CarObject.Suspension.LinearSpring(2);
+            KarbF = CarObject.Suspension.ARB(1);
+            KarbR = CarObject.Suspension.ARB(2);
+            K2  = T.SpringRate;
+            
+            Kf = ((1/(K1F*Tf^2/2 + KarbF) + 2/(K2*Tf^2))^-1);
+            Kr = ((1/(K1R*Tr^2/2 + KarbR) + 2/(K2*Tr^2))^-1);
+            
+            Kfl = CarObject.Suspension.LinearSpring(1);
+            Krl = CarObject.Suspension.LinearSpring(2);
+            Kt = K2;
+            hCGl = CarObject.CG(3);
+            PC = CarObject.Suspension.PitchCenter;
+            L = CarObject.Chassis.Length;
+            
+            W = CarObject.Weight;
+            
+            dG = 0.001;
+            
+            LatGs = (0:dG:T.MaxLateralAcceleration);
+            LongGsFor = T.GGCurve(LatGs,'Throttle');
+            LongGsBra = -T.GGCurve(LatGs,'Brake');
+            
+            LatGs = [LatGs,fliplr(LatGs)];
+            LongGs = [LongGsBra,fliplr(LongGsFor)];
+            
+            Fz = zeros(length(LatGs),4);
+            Fy = zeros(length(LatGs),4);
+            Fx = zeros(length(LatGs),4);
+            
+            Mz = zeros(length(LatGs),4);
+            My = zeros(length(LatGs),4);
+            Mx = zeros(length(LatGs),4);
+            
+            for i = 1:length(LatGs)
+                
+               GLat = LatGs(i);
+               GLon = LongGs(i);
+               
+               Normal = LateralWeightTransfer( GLat,Ws,Wfus,Wrus,FR,Tf,Tr,Kf,Kr,hCG,hfus,hrus,hfrc,hrrc );
+               LatWeightTransfer = [(Normal(1:2)-W*FR(1)/2),(Normal(3:4)-W*FR(2)/2)];
+               Normal = LongitudinalWeightTransfer( Kfl, Krl, Kt, GLon, Ws, Wfus, Wrus, hCGl, PC, FR, L );
+               Fz(i,:) = Normal + LatWeightTransfer;
+               
+               [Lateral,~] = T.TireModel(Fz(i,:),'Lateral');
+               
+               FrontRatio1 = Lateral(1)/sum(Lateral(1:2));
+               FrontRatio2 = Lateral(2)/sum(Lateral(1:2));
+               RearRatio1 = Lateral(3)/sum(Lateral(3:4));
+               RearRatio2 = Lateral(4)/sum(Lateral(3:4));
+               
+               FrontForce = W*FR(1)*GLat;
+               RearForce = W*FR(2)*GLat;
+               
+               Fy(i,1) = FrontForce*FrontRatio1;
+               Fy(i,2) = FrontForce*FrontRatio2;
+               Fy(i,3) = RearForce*RearRatio1;
+               Fy(i,4) = RearForce*RearRatio2;
+               
+               if GLon > 0
+                   Fx(i,1:2) = [ 0 0 ];
+                   Fx(i,3:4) = -W*GLon/2*[1 1];
+               else
+                   FrontT = CarObject.Brakes.Torque(1);
+                   RearT = CarObject.Brakes.Torque(2);
+                   TRatio1 = FrontT/(FrontT + RearT);
+                   TRatio2 = RearT/(FrontT + RearT);
+                   
+                   Fx(i,1:2) = -W*GLon*TRatio1/2*[1 1];
+                   Fx(i,3:4) = -W*GLon*TRatio2/2*[1 1];
+                   My(i,1:2) = Fx(i,1:2)*CarObject.Tire.Radius;
+                   My(i,3:4) = Fx(i,3:4)*CarObject.Tire.Radius;
+               end
+               
+               
+                   
+              
+            end
+            
+            [ Mz,~ ] = T.TireModel( Fz,'Moments',Fy );
+            
+            
+            
+            
+            
+        end
+        
+        
+    end
+    
+end
+
+function [ NormalLoad ] = LateralWeightTransfer( Gs,Ws,Wfus,Wrus,FR,Tf,Tr,Kf,Kr,hCG,hfus,hrus,hfrc,hrrc )
+%UNTITLED Summary of this function goes here
+%   Detailed explanation goes here
+
+
+
+Weight = Ws + Wfus + Wrus;
+WeightF = Weight*FR(1);
+WeightR = Weight*FR(2);
+
+SprungWeightF = WeightF - Wfus;
+SprungWeightR = WeightR - Wrus;
+
+FRSprung = [ SprungWeightF/Ws, SprungWeightR/Ws ];
+
+UnsprungWTF = Wfus*Gs*hfus/Tf;
+UnsprungWTR = Wrus*Gs*hrus/Tr;
+
+GeometricWTF = Ws*Gs*FRSprung(1)*hfrc/Tf;
+GeometricWTR = Ws*Gs*FRSprung(2)*hrrc/Tr;
+
+ElasticWTF = Ws*Gs*hCG*(Kf/(Kf+Kr))/Tf; % hCG is with respect to roll axis
+ElasticWTR = Ws*Gs*hCG*(Kr/(Kf+Kr))/Tr;
+
+StaticWFR = -Weight*FR(1)/2;
+StaticWFL = -Weight*FR(1)/2;
+StaticWRR = -Weight*FR(2)/2;
+StaticWRL = -Weight*FR(2)/2;
+
+NormalWFR = -(StaticWFR + UnsprungWTF + GeometricWTF + ElasticWTF);
+NormalWFL = -(StaticWFL - UnsprungWTF - GeometricWTF - ElasticWTF);
+
+NormalWRR = -(StaticWRR + UnsprungWTR + GeometricWTR + ElasticWTR);
+NormalWRL = -(StaticWRL - UnsprungWTR - GeometricWTR - ElasticWTR);
+
+
+%               InsideF  OutsideF   InsideR   OutsideR
+NormalLoad = [ NormalWFR NormalWFL NormalWRR NormalWRL ];
+
+end
+
+function [ NormalLoad ] = LongitudinalWeightTransfer( Kf, Kr, Kt, Gs, Ws, Wfus, Wrus, hCG, PC, FR, L )
+    
+    a = FR(2)*L;
+    b = FR(1)*L;
+    o = PC(2) - b;
+    h = hCG - PC(1);
+    
+    F = Gs*(Ws + Wfus + Wrus);
+
+    S0 = Kf*Kt^2*a^2 + Kr*Kt^2*b^2 + Kf*Kt^2*o^2 + Kr*Kt^2*o^2 +...
+    Kf*Kr*Kt*a^2 + Kf*Kr*Kt*b^2 + 2*Kf*Kr*Kt*o^2 - 2*Kf*Kt^2*a*o +...
+    2*Kr*Kt^2*b*o - 2*Kf*Kr*Kt*a*o + 2*Kf*Kr*Kt*b*o;
+
+    Pitch = F*h*(Kf+Kt)*(Kr+Kt)/S0;
+    
+    DynamicCGh = Pitch*o + hCG;
+    
+% 
+%     WeightTransferF = -F*h*(a-o)*(Kt*2)*(Kf*(Kr + Kt))/S0;
+%     WeightTransferR =  F*h*(b+o)*(Kt*2)*(Kr*(Kf + Kt))/S0;
+
+
+
+    WeightTransferF = -DynamicCGh./L*(Ws+Wfus+Wrus).*Gs;
+    WeightTransferR = DynamicCGh./L*(Ws+Wfus+Wrus).*Gs;
+    
+    StaticWeightF = Ws*b/(a+b) + Wfus;
+    StaticWeightR = Ws*a/(a+b) + Wrus;
+    
+    FrontLoad = StaticWeightF + WeightTransferF;
+    RearLoad = StaticWeightR + WeightTransferR;
+    
+    NormalLoad = [ FrontLoad/2 FrontLoad/2 RearLoad/2 RearLoad/2 ];
+    
+end
+    
+    
+
+
+
