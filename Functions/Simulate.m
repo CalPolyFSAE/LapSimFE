@@ -35,17 +35,17 @@ end
 CarObject.Tire.LateralGCalculator(CarObject,'Balance',DisplayFlag);
 CarObject.Tire.LongitudinalGCalculator(CarObject);
 
-LookUpTable1 = CarObject.StraightAccTableGenerator();
+StraightAccelLookupTable = CarObject.StraightAccTableGenerator();
 
-Velocity = LookUpTable1(:,1);
-Drag = LookUpTable1(:,2);
-MotorE = LookUpTable1(:,6);
+Velocity = StraightAccelLookupTable(:,1);
+Drag = StraightAccelLookupTable(:,2);
+MotorE = StraightAccelLookupTable(:,6);
 
 
-LookUpTable2 = CarObject.StraightDecTableGenerator(Velocity,Drag);
+StraightDecelLookupTable = CarObject.StraightDecTableGenerator(Velocity,Drag);
 
-StraightThrottle = ThrottleCurve(LookUpTable1,dx,StopV,CarObject);
-StraightBrake = BrakeCurve(LookUpTable2,dx);
+StraightThrottle = ThrottleCurve(StraightAccelLookupTable,dx,StopV,CarObject);
+StraightBrake = BrakeCurve(StraightDecelLookupTable,dx);
 
 
 % Cornering acceleration look up tables generation
@@ -57,10 +57,7 @@ MaxV = zeros(S,1);
 EntranceV = zeros(S,1);
 ExitV = zeros(S,1);
 
-for i = 1:S
-    
-%     disp(i)
-    
+for i = 1:S    
     R = abs(TrackObject.Track(i).Radius);
     
     RArray(i,:) = [R,i];
@@ -86,9 +83,9 @@ for i = 1:S
         end
     else
         TrackObject.Track(i).AccCurve = StraightThrottle;
-        TrackObject.Track(i).AccTable = LookUpTable1;
+        TrackObject.Track(i).AccTable = StraightAccelLookupTable;
         TrackObject.Track(i).DecCurve = StraightBrake;
-        TrackObject.Track(i).DecTable = LookUpTable2;
+        TrackObject.Track(i).DecTable = StraightDecelLookupTable;
     end
     
     MaxV(i) = TrackObject.Track(i).AccCurve(end,2);
