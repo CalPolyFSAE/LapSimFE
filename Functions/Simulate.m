@@ -50,68 +50,66 @@ StraightBrake = BrakeCurve(StraightDecelLookupTable,dx);
 
 % Cornering acceleration look up tables generation
 
-S = TrackObject.Sections;
+Sections = TrackObject.Sections;
 
-RArray = zeros(S,2);
-MaxV = zeros(S,1);
-EntranceV = zeros(S,1);
-ExitV = zeros(S,1);
+RArray = zeros(Sections,2);
+MaxV = zeros(Sections,1);
+EntranceV = zeros(Sections,1);
+ExitV = zeros(Sections,1);
 
-for i = 1:S    
-    R = abs(TrackObject.Track(i).Radius);
+for trackSection = 1:Sections   
+    R = abs(TrackObject.Track(trackSection).Radius);
     
-    RArray(i,:) = [R,i];
+    RArray(trackSection,:) = [R,trackSection];
     
-    if R
+    if R % Corner
         AccTable = CarObject.CornerAccTableGenerator(R,Velocity,Drag,MotorE);
         DecTable = CarObject.CornerDecTableGenerator(R,Velocity,Drag);
-        TrackObject.Track(i).AccTable = AccTable;
-        TrackObject.Track(i).DecTable = DecTable;
-        if i == 1
-            TrackObject.Track(i).AccCurve = ThrottleCurve( AccTable,dx,StopV,CarObject);
-            TrackObject.Track(i).DecCurve = BrakeCurve(DecTable,dx);
+        TrackObject.Track(trackSection).AccTable = AccTable;
+        TrackObject.Track(trackSection).DecTable = DecTable;
+        if trackSection == 1
+            TrackObject.Track(trackSection).AccCurve = ThrottleCurve( AccTable,dx,StopV,CarObject);
+            TrackObject.Track(trackSection).DecCurve = BrakeCurve(DecTable,dx);
         else
-            I = find(R == RArray(1:i-1,1),1,'first');
+            I = find(R == RArray(1:trackSection-1,1),1,'first');
             if I
                 j = RArray(I,2);
-                TrackObject.Track(i).AccCurve = TrackObject.Track(j).AccCurve;
-                TrackObject.Track(i).DecCurve = TrackObject.Track(j).DecCurve;
+                TrackObject.Track(trackSection).AccCurve = TrackObject.Track(j).AccCurve;
+                TrackObject.Track(trackSection).DecCurve = TrackObject.Track(j).DecCurve;
             else
-                TrackObject.Track(i).AccCurve = ThrottleCurve( AccTable,dx,StopV,CarObject);
-                TrackObject.Track(i).DecCurve = BrakeCurve(DecTable,dx);
+                TrackObject.Track(trackSection).AccCurve = ThrottleCurve( AccTable,dx,StopV,CarObject);
+                TrackObject.Track(trackSection).DecCurve = BrakeCurve(DecTable,dx);
             end
         end
-    else
-        TrackObject.Track(i).AccCurve = StraightThrottle;
-        TrackObject.Track(i).AccTable = StraightAccelLookupTable;
-        TrackObject.Track(i).DecCurve = StraightBrake;
-        TrackObject.Track(i).DecTable = StraightDecelLookupTable;
+    else % Straight
+        TrackObject.Track(trackSection).AccCurve = StraightThrottle;
+        TrackObject.Track(trackSection).AccTable = StraightAccelLookupTable;
+        TrackObject.Track(trackSection).DecCurve = StraightBrake;
+        TrackObject.Track(trackSection).DecTable = StraightDecelLookupTable;
     end
     
-    MaxV(i) = TrackObject.Track(i).AccCurve(end,2);
-    if i == 1
-        EntranceV(1) = 0;
-    elseif i == S
-        ExitV(i) = MaxV(i);
-        ExitV(i - 1) = MaxV(i);
-        EntranceV(i) = MaxV(i);
+    MaxV(trackSection) = TrackObject.Track(trackSection).AccCurve(end,2);
+    if trackSection == 1
+        EntranceV(trackSection) = 0;
+    elseif trackSection == Sections
+        ExitV(trackSection) = MaxV(trackSection);
+        ExitV(trackSection - 1) = MaxV(trackSection);
+        EntranceV(trackSection) = MaxV(trackSection);
     else
-        ExitV(i - 1) = MaxV(i);
-        EntranceV(i) = MaxV(i);
+        ExitV(trackSection - 1) = MaxV(trackSection);
+        EntranceV(trackSection) = MaxV(trackSection);
     end    
 end
 
-[ EntranceV, ExitV, BP, BPSpeed ] = BrakePointIterator( TrackObject,MaxV,EntranceV,ExitV );
-Miscellaneous = {EntranceV,ExitV,BP,BPSpeed};
-Tele = Telemetry(Miscellaneous);
+[ EntranceV, ExitV, BP, BPSpeed ] = BrakePointIterator( TrackObject, MaxV, EntranceV, ExitV );
+Tele = Telemetry({EntranceV, ExitV, BP, BPSpeed});
 Tele.LapStitch(TrackObject);
 Tele.LapResultCalculator(TrackObject,DisplayFlag);
 
 end
 
 function [ Results ] = BrakeCurve( Table,dx )
-%UNTITLED Summary of this function goes here
-%   Detailed explanation goes here
+% Calculates a braking curve given a table 
 
 Vel = Table(:,1);
 ARPM = Table(:,3);
