@@ -3,15 +3,28 @@ classdef CarChassis < handle
     %   Detailed explanation goes here
     
     properties
+        ChassisWeight
+        ChassisCG
+        DriverWeight
+        DriverCG
+        TotalWeight
+        EffectiveCG
         Length
         Track
         Name = '';
     end
     
     methods
-        function C = CarChassis(Track,Length)
+        function C = CarChassis(CWeight,CCG,DWeight,DCG,Track,Length)
+            C.ChassisWeight = CWeight;
+            C.ChassisCG = CCG;
+            C.DriverWeight = DWeight;
+            C.DriverCG = DCG;
             C.Track = Track;
             C.Length = Length;
+            
+            C.TotalWeight = CWeight + DWeight;
+            C.EffectiveCG = (CWeight.*CCG + DWeight.*DCG)/C.TotalWeight;
         end
             
             

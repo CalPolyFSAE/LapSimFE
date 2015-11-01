@@ -2,14 +2,11 @@ function [ RawResults,PointResults ] = RPMLimitingAnalysis( Car,Track )
 %UNTITLED2 Summary of this function goes here
 %   Detailed explanation goes here
 
-PointResults = [];
-RawResults = [];
-
 GearRatios = (2:0.5:6);
 
 S1 = length(GearRatios);
 
-RPMCutOffs = (3500:-500:1500);
+RPMCutOffs = (3500:-200:1900);
 
 S2 = length(RPMCutOffs);
 
@@ -28,7 +25,12 @@ TF = 1;
 
 for i = 1:S1
     
-    GR = GearRatios(i)
+    if getappdata(h,'canceling')
+        delete(h)
+        return
+    end
+    
+    GR = GearRatios(i);
     Car.Driveline.GearRatio = GR;
     
     Tele = Simulate(Car,Track);
@@ -41,13 +43,8 @@ for i = 1:S1
     MotorCurve = Car.Motor.OutputCurve;
     
     for j = 1:S2
-        
-        if getappdata(h,'canceling')
-            delete(h)
-            return
-        end
     
-        RPM = RPMCutOffs(j)
+        RPM = RPMCutOffs(j);
         
         Car.Motor.OutputCurve(RPM+2:end,:) = [];
         
@@ -57,17 +54,13 @@ for i = 1:S1
 
         if TF > 1;
             TF = 1;
-        elseif TF <= 0;
-            TF = 1;
         end
-        
-        waitbar(((i-1)/S1+j/(100*S2)),h,sprintf('%4.2f%%',((i-1)/S1+j/(100*S2))*100))
         
     end
     
     Car.Motor.OutputCurve = MotorCurve;
     
-    waitbar(((i)/S1+j/(100*S2)),h,sprintf('%4.2f%%',((i)/S1+j/(100*S2))*100))
+    waitbar(i/S1,h,sprintf('%4.2f%%',i/S1*100))
     
 end
 
@@ -85,6 +78,11 @@ TF = 1;
 
 for i = S1+1:S1*2
     
+    if getappdata(h,'canceling')
+        delete(h)
+        return
+    end
+    
     GR = GearRatios(i-S1);
     Car.Driveline.GearRatio = GR;
     
@@ -99,11 +97,6 @@ for i = S1+1:S1*2
     
     for j = 1:S2
         
-        if getappdata(h,'canceling')
-            delete(h)
-            return
-        end
-        
         RPM = RPMCutOffs(j);
         
         Car.Motor.OutputCurve(RPM+2:end,:) = [];
@@ -112,19 +105,15 @@ for i = S1+1:S1*2
    
         RawResults(i,:,j) = [TimeAutoX,Time75,TimeSkid,EndTime,Energy,TF,RPM,GR];
     
-        if TF > 1;
-            TF = 1;
-        elseif TF <= 0;
+        if TF > 1
             TF = 1;
         end
-        
-        waitbar(((i-S1-1)/S1+j/(100*S2)),h,sprintf('%4.2f%%',((i-S1-1)/S1+j/(100*S2))*100))
         
     end
     
     Car.Motor.OutputCurve = MotorCurve;
     
-    waitbar(((i-S1)/S1+j/(100*S2)),h,sprintf('%4.2f%%',((i-S1)/S1+j/(100*S2))*100))
+    waitbar((i-S1)/S1,h,sprintf('%4.2f%%',(i-S1)/S1*100))
     
 end
 

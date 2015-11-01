@@ -122,8 +122,6 @@ classdef Telemetry < handle
                 dx = Acc(2,1) - Acc(1,1); % Determine the position 
                                           % increment that the simulator 
                                           % used
-                                          
-                %dx = 1;
 
                 L = RL(i,2); % Pull the current section length
                 
@@ -217,12 +215,6 @@ classdef Telemetry < handle
                 % point
                 AccStartIndex = find(Acc(:,1) == 0);
                 AccEndIndex = find(Acc(:,1) == BP(i,1));
-                if AccEndIndex
-                else
-                    Acc(end+1,:) = Acc(end,:);
-                    Acc(end,1) = Acc(end,1) + dx;
-                    AccEndIndex = find(Acc(:,1) == BP(i,1));
-                end
                 % Find the start and end indexes of the brake curve
                 % starting one step after the end of the throttle curve and
                 % ending at the end of the section
@@ -272,16 +264,14 @@ classdef Telemetry < handle
             LapDataStitch(2:end,11) = NewT;
 
             % Recalculates Gs to smooth out borders between lap sections
-            % Section removed because in its current form it exacerbates
-            % the problem
-%             NewGs = (LapDataStitch(2:end,2) - LapDataStitch(1:end-1,2))./LapDataStitch(2:end,11);
-%             LapDataStitch(2:end,3) = NewGs/(12*32.174);
+            NewGs = (LapDataStitch(2:end,2) - LapDataStitch(1:end-1,2))./LapDataStitch(2:end,11);
+            LapDataStitch(2:end,3) = NewGs/(12*32.174);
             
             Tele.LapData = LapDataStitch;
             
         end
         
-        function LapResultCalculator(Tele,Track,DisplayFlag)
+        function LapResultCalculator(Tele,Track,Gs)
             
             S = Track.Sections;
 
@@ -289,37 +279,45 @@ classdef Telemetry < handle
 
             TotalTime = sum(Time);
 
+            disp(['Total Lap Time (s)   : ', num2str(TotalTime)]);
+
+
             Power = Tele.LapData(:,8);
             Power = Power*0.000112985;
             Energy = (Power.*Time);
 
             TotalEnergy = sum(Energy)/3600;
-            
+
+            disp(['Total Lap Energy (kWh): ', num2str(TotalEnergy)]);
+
             I = Tele.LapData(:,5) == 1;
 
             TimeTTL = sum(Tele.LapData(I,11));
 
             PercentTL = TimeTTL/TotalTime * 100;
 
+            disp(['% Traction Limit     : ', num2str(PercentTL)]);
+
             avgLongG = mean(abs(Tele.LapData(:,3)));
             avgLatG  = mean(abs(Tele.LapData(:,4)));
-            
+
+            disp(['Average Long Gs      : ', num2str(avgLongG)])
+            disp(['Average Lat Gs       : ', num2str(avgLatG)])
+
             V = Tele.LapData(:,2)*(3600/(5280*12));
             X = Tele.LapData(:,1)/12;
 
-            if DisplayFlag
-                figure
-                plot(X,V);
-                xlabel('Distance (ft)')
-                ylabel('Speed (mph)')
-                title('Lap Speeds')
-
-                figure
-                hist(Tele.LapData(:,7),100);
-                xlabel('Motor Speed (RPM)')
-                ylabel('Number of Occurrences')
-                title('Motor RPM Histogram')
-            end
+%             figure
+%             plot(X,V);
+%             xlabel('Distance (ft)')
+%             ylabel('Speed (mph)')
+%             title('Lap Speeds')
+% 
+%             figure
+%             hist(Tele.LapData(:,7),100);
+%             xlabel('Motor Speed (RPM)')
+%             ylabel('Number of Occurrences')
+%             title('Motor RPM Histogram')
 
             for i = 1:S
 
@@ -349,38 +347,52 @@ classdef Telemetry < handle
                         TotalAccTime = TimeV + dt;
                     end
 
-                    if DisplayFlag
-                        figure
-                        plot(Acc(:,1)/(12*3.281),Acc(:,2)*3600/(5280*12))
-                        xlabel('Distance (m)')
-                        ylabel('Speed (mph)')
-                        title('Straight Line Acceleration')
-
-                        LapTimeStr =  'Total Lap Time (s): %2.3f\n';
-                        EnergyStr =   'Total Lap Energy (kWh): %0.4f\n';
-                        TractionStr = '%% Traction Limit: %2.2f\n';
-                        AvgLongGStr = 'Average Long Gs: %1.3f\n';
-                        AvgLatGStr =  'Average Lat Gs: %1.3f\n';
-                        AccTimeStr =  '75m Run Time (s): %1.3f\n';
-                        TTTSStr =     'Time to Top Speed (s): %1.3f\n';
-                        TopVStr =     'Top Speed (mph): %2.3f\n';
-                        DTTSStr =     'Distance to Top Speed (m): %3.3f\n';
-                        MaxGStr =     'Max Long G: %1.3f\n';
-                        
-                        resultstr = sprintf([LapTimeStr,EnergyStr,TractionStr,'\n',...
-                            AvgLongGStr,AvgLatGStr,MaxGStr,'\n',...
-                            AccTimeStr,TopVStr,TTTSStr,DTTSStr],...
-                            TotalTime,TotalEnergy,PercentTL,avgLongG,avgLatG,...
-                            TopA,TotalAccTime,TopV,TimeV,DistV);
-                        msgbox(resultstr,'Lap Results')
-                    end
+                    disp(['75m Run Time (s)     : ', num2str(TotalAccTime)])
+                    disp(['TTTS (s)             : ', num2str(TimeV)])        
+                    disp(['Top Speed (mph)      : ', num2str(TopV)])
+                    disp(['DTTS (m)             : ', num2str(DistV)])
+                    disp(['Max Acceleration (G) : ', num2str(TopA)])
 
                     break
                 end
 
             end
             
-            Tele.Results = {TotalTime,TopV,TimeV,TotalAccTime,DistV,TopA,TotalEnergy,PercentTL};
+            Tmin = 3.506;
+            Tmax = Tmin*1.50;
+            AccScore = (71.5*(Tmax/TotalAccTime-1))/((Tmax/Tmin)-1) + 3.5;
+            if AccScore > 75
+                AccScore = 75;
+            elseif AccScore < 0
+                AccScore = 0;
+            end
+            disp(['75m Run Score        : ', num2str(AccScore)])
+            
+            Tmin = 77.664;
+            Tmax = 1.25*Tmin;
+            AutoXScore = 95.5*(Tmax/TotalTime - 1)/(Tmax/Tmin - 1) + 4.5;
+            if AutoXScore > 100
+                AutoXScore = 100;
+            elseif AutoXScore < 0
+                AutoXScore = 0;
+            end
+            disp(['AutoCross Score      : ', num2str(AutoXScore)])
+            
+            SkidPadT = 2*pi*sqrt(9.1/(9.81*Gs));
+            Tmin = 4.901;
+            Tmax = 1.25*Tmin;
+            SkidPadScore = 71.5*((Tmax/SkidPadT)^2-1)/((Tmax/Tmin)^2-1) + 3.5;
+            if SkidPadScore > 75
+                SkidPadScore = 75;
+            elseif SkidPadScore < 0
+                SkidPadScore = 0;
+            end
+            disp(['Skid Pad Score       : ', num2str(SkidPadScore)])
+            
+            TotalScore = AccScore + AutoXScore + SkidPadScore;
+            disp(['Total Score          : ', num2str(TotalScore)])
+            
+            Tele.Results = {Time,TopV,TimeV,TotalAccTime,DistV,TopA,TotalEnergy,PercentTL,TotalScore,AccScore,AutoXScore,SkidPadScore};
             
         end
     end

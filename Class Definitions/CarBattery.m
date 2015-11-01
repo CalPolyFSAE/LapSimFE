@@ -1,16 +1,19 @@
 classdef CarBattery < handle
-    %The CarBattery object class is used to define properties of the
-    %batteries on the vehicle being simulated in 808s and Springrates
-    %   CarBattery is defined by its name and capacity measured in kWh.
+    %UNTITLED8 Summary of this class goes here
+    %   Detailed explanation goes here
     
     properties
-        Capacity        %Battery capacity (kWh)
-        Name = '';      %Battery name
+        Capacity
+        Weight
+        EffectiveCG
+        Name = '';
     end
     
     methods
-        function B = CarBattery(Capacity)
-            B.Capacity = Capacity;  % Define CatBattery property capacity
+        function B = CarBattery(Capacity,Weight,CG)
+            B.Capacity = Capacity;
+            B.Weight = Weight;
+            B.EffectiveCG = CG;
         end
         
     end

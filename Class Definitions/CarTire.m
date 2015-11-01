@@ -12,6 +12,8 @@ classdef CarTire < handle
         MaxLateralAcceleration % Max turning acceleration on GG curve
         RollingResistance % Constant rolling resistance coefficient
         SpringRate
+        Weight % Weight of all four tires (lbf)
+        EffectiveCG % CG of all tires (in inches from center rear axle)
         J % Rotational inertia (lbf in^2)
         Radius % Effective radius (in)
         TireModel
@@ -19,7 +21,7 @@ classdef CarTire < handle
     end
     
     methods
-        function T = CarTire(TM,K,R,Resistance,J)
+        function T = CarTire(TM,K,R,Resistance,Weight,CG,J)
             % CarTire Constructor method
             %
             % This method constructs an object of type CarTire.  To define
@@ -68,11 +70,13 @@ classdef CarTire < handle
             T.SpringRate = K;
             T.Radius = R;
             T.RollingResistance = Resistance;
+            T.Weight = Weight;
+            T.EffectiveCG = CG;
             T.J = J;
             T.TireModel = TM;
         end
         
-        function LateralGCalculator(T,CarObject,Balance,DisplayFlag)
+        function LateralGCalculator(T,CarObject,Balance)
             
             Ws = CarObject.SprungMass;
             Wfus = CarObject.UnsprungMass(1);
@@ -158,12 +162,10 @@ classdef CarTire < handle
                             Kf = Kf - Adjustment;
                         end
                     else
-                        if DisplayFlag
-                            disp(['Front Roll Stiffness: ',num2str(Kf), ' in-lbf/rad'])
-                            disp(['Rear Roll Stiffness:  ',num2str(Kr), ' in-lbf/rad'])
-                            disp(['Unbalanced Gs: ', num2str(UnbalancedG)])
-                            disp(['Balanced Gs:   ', num2str(OutGs(I))])
-                        end
+                        disp(['Front Roll Stiffness: ',num2str(Kf), ' in-lbf/rad'])
+                        disp(['Rear Roll Stiffness:  ',num2str(Kr), ' in-lbf/rad'])
+                        disp(['Unbalanced Gs: ', num2str(UnbalancedG)])
+                        disp(['Balanced Gs:   ', num2str(OutGs(I))])
                         break
                     end
                 
@@ -201,22 +203,16 @@ classdef CarTire < handle
             
             Gs = (0:0.01:2)';
             
-            Drive = CarObject.Motor.Drive;
-            
             Fz = LongitudinalWeightTransfer( Kf, Kr, Kt, Gs, Ws, Wfus, Wrus, hCG, PC, FR, L );
 
             [Fx,SR] = T.TireModel(Fz,'Longitudinal');
 
-            if strcmp(Drive,'RWD')
-                FxOut  = Fx(:,3) + Fx(:,4);
-            elseif strcmp (Drive,'AWD')
-                FxOut = Fx(:,1) + Fx(:,2) + Fx(:,3) + Fx(:,4);
-            end
+            FxRear  = Fx(:,3) + Fx(:,4);
 
             W = Ws + Wrus + Wfus;
-            OutGs = FxOut/W;
+            RearGs = FxRear/W;
 
-            Difference = OutGs - Gs;
+            Difference = RearGs - Gs;
             I1 = find(Difference >= 0,1,'last');
             I2 = find(Difference < 0, 1,'first');
 
@@ -229,7 +225,7 @@ classdef CarTire < handle
                 I = I1;
             end
             
-            T.MaxForwardAcceleration = OutGs(I);
+            T.MaxForwardAcceleration = RearGs(I);
             
             Gs = -(0:0.01:5)';
             
@@ -326,110 +322,6 @@ classdef CarTire < handle
             grid on
             xlabel('Lateral Gs')
             ylabel('Longitudinal Gs')
-            
-        end
-        
-        function [Fz,Fy,Fx,Mz,My,Mx,LatGs,LongGs] = ContactForces(T,CarObject)
-            
-            Ws = CarObject.SprungMass;
-            Wfus = CarObject.UnsprungMass(1);
-            Wrus = CarObject.UnsprungMass(2);
-            Tf = CarObject.Chassis.Track(1);
-            Tr = CarObject.Chassis.Track(2);
-            hfus = CarObject.Suspension.UnsprungHeight(1);
-            hrus = CarObject.Suspension.UnsprungHeight(2);
-            hfrc = CarObject.Suspension.RollCenters(1);
-            hrrc = CarObject.Suspension.RollCenters(2);
-            hCG = CarObject.CG(3) - (hfrc + hrrc)/2;
-            b = CarObject.CG(1)/CarObject.Chassis.Length;
-            a = 1 - b;
-            FR = [ a b ];
-            
-            K1F = CarObject.Suspension.LinearSpring(1);
-            K1R = CarObject.Suspension.LinearSpring(2);
-            KarbF = CarObject.Suspension.ARB(1);
-            KarbR = CarObject.Suspension.ARB(2);
-            K2  = T.SpringRate;
-            
-            Kf = ((1/(K1F*Tf^2/2 + KarbF) + 2/(K2*Tf^2))^-1);
-            Kr = ((1/(K1R*Tr^2/2 + KarbR) + 2/(K2*Tr^2))^-1);
-            
-            Kfl = CarObject.Suspension.LinearSpring(1);
-            Krl = CarObject.Suspension.LinearSpring(2);
-            Kt = K2;
-            hCGl = CarObject.CG(3);
-            PC = CarObject.Suspension.PitchCenter;
-            L = CarObject.Chassis.Length;
-            
-            W = CarObject.Weight;
-            
-            dG = 0.001;
-            
-            LatGs = (0:dG:T.MaxLateralAcceleration);
-            LongGsFor = T.GGCurve(LatGs,'Throttle');
-            LongGsBra = -T.GGCurve(LatGs,'Brake');
-            
-            LatGs = [LatGs,fliplr(LatGs)];
-            LongGs = [LongGsBra,fliplr(LongGsFor)];
-            
-            Fz = zeros(length(LatGs),4);
-            Fy = zeros(length(LatGs),4);
-            Fx = zeros(length(LatGs),4);
-            
-            Mz = zeros(length(LatGs),4);
-            My = zeros(length(LatGs),4);
-            Mx = zeros(length(LatGs),4);
-            
-            for i = 1:length(LatGs)
-                
-               GLat = LatGs(i);
-               GLon = LongGs(i);
-               
-               Normal = LateralWeightTransfer( GLat,Ws,Wfus,Wrus,FR,Tf,Tr,Kf,Kr,hCG,hfus,hrus,hfrc,hrrc );
-               LatWeightTransfer = [(Normal(1:2)-W*FR(1)/2),(Normal(3:4)-W*FR(2)/2)];
-               Normal = LongitudinalWeightTransfer( Kfl, Krl, Kt, GLon, Ws, Wfus, Wrus, hCGl, PC, FR, L );
-               Fz(i,:) = Normal + LatWeightTransfer;
-               
-               [Lateral,~] = T.TireModel(Fz(i,:),'Lateral');
-               
-               FrontRatio1 = Lateral(1)/sum(Lateral(1:2));
-               FrontRatio2 = Lateral(2)/sum(Lateral(1:2));
-               RearRatio1 = Lateral(3)/sum(Lateral(3:4));
-               RearRatio2 = Lateral(4)/sum(Lateral(3:4));
-               
-               FrontForce = W*FR(1)*GLat;
-               RearForce = W*FR(2)*GLat;
-               
-               Fy(i,1) = FrontForce*FrontRatio1;
-               Fy(i,2) = FrontForce*FrontRatio2;
-               Fy(i,3) = RearForce*RearRatio1;
-               Fy(i,4) = RearForce*RearRatio2;
-               
-               if GLon > 0
-                   Fx(i,1:2) = [ 0 0 ];
-                   Fx(i,3:4) = -W*GLon/2*[1 1];
-               else
-                   FrontT = CarObject.Brakes.Torque(1);
-                   RearT = CarObject.Brakes.Torque(2);
-                   TRatio1 = FrontT/(FrontT + RearT);
-                   TRatio2 = RearT/(FrontT + RearT);
-                   
-                   Fx(i,1:2) = -W*GLon*TRatio1/2*[1 1];
-                   Fx(i,3:4) = -W*GLon*TRatio2/2*[1 1];
-                   My(i,1:2) = Fx(i,1:2)*CarObject.Tire.Radius;
-                   My(i,3:4) = Fx(i,3:4)*CarObject.Tire.Radius;
-               end
-               
-               
-                   
-              
-            end
-            
-            [ Mz,~ ] = T.TireModel( Fz,'Moments',Fy );
-            
-            
-            
-            
             
         end
         

@@ -4,13 +4,21 @@ classdef CarBrakes < handle
     
     properties
         Torque
+        Weight
+        SprungMass
+        UnsprungMass
         J
+        EffectiveCG
         Name = '';
     end
     
     methods
-        function B = CarBrakes(Torque,J)
+        function B = CarBrakes(Torque,SprungMass,UnsprungMass,CG,J)
             B.Torque = Torque;
+            B.SprungMass = SprungMass;
+            B.UnsprungMass = UnsprungMass;
+            B.Weight = SprungMass + sum(UnsprungMass);
+            B.EffectiveCG = CG;
             B.J = J;
         end
         

@@ -3,14 +3,14 @@ function [ Results,TFResults ] = EnduranceAnalysis( Car,Track )
 %   Detailed explanation goes here
 
 tic
-Simulate(Car,Track, 'Off', 1, 6);
+Simulate(Car,Track);
 Time = toc;
 
-GearRatios = (3:0.5:5);
+GearRatios = (4.2:0.1:4.7);
 
 S1 = length(GearRatios);
 
-TorqueFactor = (1:-0.05:0.5);
+TorqueFactor = (1:-0.005:0.5);
 
 S2 = length(TorqueFactor);
 
@@ -35,7 +35,7 @@ for i = 1:S1
         TF = TorqueFactor(j);
         disp(TF)
         NewCar.Motor.OutputCurve(:,2) = NewCar.Motor.OutputCurve(:,2)*TF;
-        Tele = Simulate(NewCar,Track, 'Off', .6, 6);
+        Tele = Simulate(NewCar,Track);
 
         Energy = cell2mat(Tele.Results(7));
         Energy = Energy*16.4;
@@ -68,7 +68,7 @@ for i = 1:S1
 
             NewCar.Motor.OutputCurve(:,2) = NewCar.Motor.OutputCurve(:,2)/TF;
 
-            Tele = Simulate(NewCar,Track, 'Off', 1, 6);
+            Tele = Simulate(NewCar,Track);
 
             Score = cell2mat(Tele.Results(9));
 

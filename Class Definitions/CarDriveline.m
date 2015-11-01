@@ -5,14 +5,22 @@ classdef CarDriveline < handle
     properties
         GearRatio
         Efficiency
+        Weight
+        EffectiveCG
+        SprungMass
+        UnsprungMass
         J
         Name = '';
     end
     
     methods
-        function D = CarDriveline(GearRatio,Efficiency,J)
+        function D = CarDriveline(GearRatio,Efficiency,SprungM,UnsprungM,CG,J)
             D.GearRatio = GearRatio;
             D.Efficiency = Efficiency;
+            D.Weight = SprungM + sum(UnsprungM);
+            D.EffectiveCG = CG;
+            D.SprungMass = SprungM;
+            D.UnsprungMass = UnsprungM;
             D.J = J;
         end
         

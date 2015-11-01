@@ -86,17 +86,8 @@ for i=1:N
     end
 end
 
-Tmin75 = 3.506;
-TminAutoX = 77.664;
-TminSkid = 4.901;
-TminEnd = 1367.38;
-TminEndLap = 85.46;
-Emin = 0.216;
-EFmin = 0.22;
-
-
 % Calls TestTrack Constructor
-Track = TestTrack(TSArray,[Tmin75,TminAutoX,TminSkid,TminEnd,TminEndLap,Emin,EFmin],'FSG 2013');
+Track = TestTrack(TSArray);
 
 
 end

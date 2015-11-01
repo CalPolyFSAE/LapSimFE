@@ -19,7 +19,7 @@ OldError = 100;
 
 while true
     
-    ConverganceCount = ConverganceCount + 1
+    ConverganceCount = ConverganceCount + 1;
     
     Car.Motor.OutputCurve(:,2) = Car.Motor.OutputCurve(:,2)*TF;
     
@@ -55,7 +55,7 @@ while true
 %     OldTF = TF;
 %     TF = TF - Adjustment;
     
-    TF = TF + Error*Gain
+    TF = TF + Error*Gain;
     
     if TF > 1;
         break
@@ -69,11 +69,6 @@ while true
         
         break
         
-    end
-    
-    if ConverganceCount == 50
-        disp('Convergance Unstable, exiting loop')
-        break
     end
     
     

@@ -1,4 +1,4 @@
-function [ Tele ] = Simulate( CarObject,TrackObject,Output,StopV,dx )
+function [ Tele ] = Simulate( CarObject,TrackObject )
 % Lap Simulation Function
 %
 % This function simulates a lap around the given track object by the given
@@ -26,90 +26,90 @@ function [ Tele ] = Simulate( CarObject,TrackObject,Output,StopV,dx )
 %**************************************************************
 % NONE
 
-if strcmp(Output,'On')
-    DisplayFlag = 1;
-else
-    DisplayFlag = 0;
-end
 
-CarObject.Tire.LateralGCalculator(CarObject,'Balance',DisplayFlag);
+dx = 1;
+
+CarObject.Tire.LateralGCalculator(CarObject,'Balance');
 CarObject.Tire.LongitudinalGCalculator(CarObject);
 
-StraightAccelLookupTable = CarObject.StraightAccTableGenerator();
+LookUpTable1 = CarObject.StraightAccTableGenerator();
 
-Velocity = StraightAccelLookupTable(:,1);
-Drag = StraightAccelLookupTable(:,2);
-MotorE = StraightAccelLookupTable(:,6);
+Velocity = LookUpTable1(:,1);
+Drag = LookUpTable1(:,2);
+MotorE = LookUpTable1(:,6);
 
 
-StraightDecelLookupTable = CarObject.StraightDecTableGenerator(Velocity,Drag);
+LookUpTable2 = CarObject.StraightDecTableGenerator(Velocity,Drag);
 
-StraightThrottle = ThrottleCurve(StraightAccelLookupTable,dx,StopV,CarObject);
-StraightBrake = BrakeCurve(StraightDecelLookupTable,dx);
+StraightThrottle = ThrottleCurve(LookUpTable1,dx);
+StraightBrake = BrakeCurve(LookUpTable2,dx);
 
 
 % Cornering acceleration look up tables generation
 
-Sections = TrackObject.Sections;
+S = TrackObject.Sections;
 
-RArray = zeros(Sections,2);
-MaxV = zeros(Sections,1);
-EntranceV = zeros(Sections,1);
-ExitV = zeros(Sections,1);
+RArray = zeros(S,2);
+MaxV = zeros(S,1);
+EntranceV = zeros(S,1);
+ExitV = zeros(S,1);
 
-for trackSection = 1:Sections   
-    R = abs(TrackObject.Track(trackSection).Radius);
+for i = 1:S
     
-    RArray(trackSection,:) = [R,trackSection];
+    R = TrackObject.Track(i).Radius;
     
-    if R % Corner
+    RArray(i,:) = [R,i];
+    
+    if R
         AccTable = CarObject.CornerAccTableGenerator(R,Velocity,Drag,MotorE);
         DecTable = CarObject.CornerDecTableGenerator(R,Velocity,Drag);
-        TrackObject.Track(trackSection).AccTable = AccTable;
-        TrackObject.Track(trackSection).DecTable = DecTable;
-        if trackSection == 1
-            TrackObject.Track(trackSection).AccCurve = ThrottleCurve( AccTable,dx,StopV,CarObject);
-            TrackObject.Track(trackSection).DecCurve = BrakeCurve(DecTable,dx);
+        TrackObject.Track(i).AccTable = AccTable;
+        TrackObject.Track(i).DecTable = DecTable;
+        if i == 1
+            TrackObject.Track(i).AccCurve = ThrottleCurve( AccTable,dx);
+            TrackObject.Track(i).DecCurve = BrakeCurve(DecTable,dx);
         else
-            I = find(R == RArray(1:trackSection-1,1),1,'first');
+            I = find(R == RArray(1:i-1,1),1,'first');
             if I
                 j = RArray(I,2);
-                TrackObject.Track(trackSection).AccCurve = TrackObject.Track(j).AccCurve;
-                TrackObject.Track(trackSection).DecCurve = TrackObject.Track(j).DecCurve;
+                TrackObject.Track(i).AccCurve = TrackObject.Track(j).AccCurve;
+                TrackObject.Track(i).DecCurve = TrackObject.Track(j).DecCurve;
             else
-                TrackObject.Track(trackSection).AccCurve = ThrottleCurve( AccTable,dx,StopV,CarObject);
-                TrackObject.Track(trackSection).DecCurve = BrakeCurve(DecTable,dx);
+                TrackObject.Track(i).AccCurve = ThrottleCurve( AccTable,dx);
+                TrackObject.Track(i).DecCurve = BrakeCurve(DecTable,dx);
             end
         end
-    else % Straight
-        TrackObject.Track(trackSection).AccCurve = StraightThrottle;
-        TrackObject.Track(trackSection).AccTable = StraightAccelLookupTable;
-        TrackObject.Track(trackSection).DecCurve = StraightBrake;
-        TrackObject.Track(trackSection).DecTable = StraightDecelLookupTable;
+    else
+        TrackObject.Track(i).AccCurve = StraightThrottle;
+        TrackObject.Track(i).AccTable = LookUpTable1;
+        TrackObject.Track(i).DecCurve = StraightBrake;
+        TrackObject.Track(i).DecTable = LookUpTable2;
     end
     
-    MaxV(trackSection) = TrackObject.Track(trackSection).AccCurve(end,2);
-    if trackSection == 1
-        EntranceV(trackSection) = 0;
-    elseif trackSection == Sections
-        ExitV(trackSection) = MaxV(trackSection);
-        ExitV(trackSection - 1) = MaxV(trackSection);
-        EntranceV(trackSection) = MaxV(trackSection);
+    MaxV(i) = TrackObject.Track(i).AccCurve(end,2);
+    if i == 1
+        EntranceV(1) = 0;
+    elseif i == S
+        ExitV(i) = MaxV(i);
+        ExitV(i - 1) = MaxV(i);
+        EntranceV(i) = MaxV(i);
     else
-        ExitV(trackSection - 1) = MaxV(trackSection);
-        EntranceV(trackSection) = MaxV(trackSection);
+        ExitV(i - 1) = MaxV(i);
+        EntranceV(i) = MaxV(i);
     end    
 end
 
-[ EntranceV, ExitV, BP, BPSpeed ] = BrakePointIterator( TrackObject, MaxV, EntranceV, ExitV );
-Tele = Telemetry({EntranceV, ExitV, BP, BPSpeed});
+[ EntranceV, ExitV, BP, BPSpeed ] = BrakePointIterator( TrackObject,MaxV,EntranceV,ExitV );
+Miscellaneous = {EntranceV,ExitV,BP,BPSpeed};
+Tele = Telemetry(Miscellaneous);
 Tele.LapStitch(TrackObject);
-Tele.LapResultCalculator(TrackObject,DisplayFlag);
+Tele.LapResultCalculator(TrackObject,CarObject.Tire.MaxLateralAcceleration);
 
 end
 
 function [ Results ] = BrakeCurve( Table,dx )
-% Calculates a braking curve given a table 
+%UNTITLED Summary of this function goes here
+%   Detailed explanation goes here
 
 Vel = Table(:,1);
 ARPM = Table(:,3);
@@ -231,11 +231,11 @@ Results = [Results(:,1),Results(:,2),Results(:,3),Results(:,7),...
 
 end
 
-function [ Results ] = ThrottleCurve( Table,dx,StopV,Car )
+function [ Results ] = ThrottleCurve( Table,dx )
 %UNTITLED Summary of this function goes here
 %   Detailed explanation goes here
 
-StopSpeedPercentage = StopV;
+StopSpeedPercentage = 1;
 
 Vel = Table(:,1);
 ARPM = Table(:,3);
@@ -275,7 +275,7 @@ else
     TopSpeed = Vel(end);
 end
 
-StopSpeed = StopSpeedPercentage^2*TopSpeed;
+StopSpeed = sqrt(StopSpeedPercentage)*TopSpeed;
 
 V = 0;
 X = 0;
@@ -378,25 +378,6 @@ I = I + 1;
 
 Results(I:end,:) = [];
 
-EndV = Results(end,2);
-EndRPM = Results(end,6);
-I = find(Table(:,1) >= EndV,1,'first');
-if I
-    EndD = Table(I,2);
-    RollingR = Car.Weight*Car.Tire.RollingResistance; % Rolling Resistance force for car configuration
-    EndF = EndD + RollingR;
-    EndAxleTorque = EndF*Car.Tire.Radius;
-    EndMotorTorque = EndAxleTorque/Car.Driveline.GearRatio;
-    I = find(Car.Motor.OutputCurve(:,1) <= EndRPM,1,'last');
-    EndMotorE = Car.Motor.OutputCurve(I,3);
-    EndPower = ((EndMotorTorque*EndRPM/EndMotorE)*pi/30);
-    EndT = dx/EndV;
-    Results(end,3) = 0;
-    Results(end,8) = EndPower;
-    Results(end,9) = EndMotorTorque;
-    Results(end,11) = EndT;
-end
-
 
 
 end
@@ -470,9 +451,8 @@ SectionLength = Section.Length;
 
 Acc = [Section.AccCurve(:,1), Section.AccCurve(:,2)];
 Dec = [Section.DecCurve(:,1), Section.DecCurve(:,2)];
-dx = Acc(2,1) - Acc(1,1);
-%dx = 1;
-
+%dx = Acc(2,1) - Acc(1,1);
+dx=1;
 
 % Shifts data arrays so they coincide with entry and exit speed
 AccIndex = find(Acc(:,2) <= EntrySpeed, 1, 'last');

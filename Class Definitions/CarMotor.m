@@ -9,13 +9,14 @@ classdef CarMotor < handle
         OutputCurve  % Output curve of the car, given as a 3 column vector.
                      % The first column is RPM, the second is torque in in
                      % lb, and the third is efficiency.
+        Weight       % Weight of the motor system given in lbs
+        EffectiveCG  % 3 element vector giving motor cg in inches
         NMotors      % Number of motors used
-        Drive
         Name = '';
     end
     
     methods
-        function M = CarMotor(OutputCurve,NMotors,Drive)
+        function M = CarMotor(OutputCurve,NMotors,Weight,CG)
             % CarMotor Constructor method
             %
             % This method constructs an object of type CarMotor.  To define
@@ -56,7 +57,8 @@ classdef CarMotor < handle
             % Assigns values to tire object properties
             M.OutputCurve = OutputCurve;
             M.NMotors = NMotors;
-            M.Drive = Drive;
+            M.Weight = Weight;
+            M.EffectiveCG = CG;
         end
         
         function [ Torque, Efficiency ] = Output(M,RPM)
@@ -74,7 +76,6 @@ classdef CarMotor < handle
         end
         
         function Plot(M)
-            figure
             [AX] = plotyy(M.OutputCurve(:,1),M.OutputCurve(:,2),...
                 M.OutputCurve(:,1),M.OutputCurve(:,3));
             title([M.Name, ' Output Curve'])
@@ -83,8 +84,6 @@ classdef CarMotor < handle
             set(get(AX(2),'Ylabel'),'String','Engine Efficiency (out of 1)')
             set(AX(2),'ylim',[0.0 1.0])
             grid on
-            figure
-            plot(M.OutputCurve(:,1),M.OutputCurve(:,2).*M.OutputCurve(:,1))
         end
     end
     

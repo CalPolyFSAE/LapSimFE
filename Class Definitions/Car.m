@@ -1,46 +1,30 @@
 classdef Car < handle
-    %Car class object is one of two main objects that is used in 808s and
-    %Springrates vehicle simulation
-    %   Car class object holds properties for the car that is used in the
-    %   simulation to determine performance.  Car object also containts
-    %   methods for generating look up tables that are used for the
-    %   simulation.  Values from the look up tables are used to generate
-    %   acceleration and deceleration curves that the simulation pieces
-    %   together to determine lap time and other subsequent information
+    %UNTITLED12 Summary of this class goes here
+    %   Detailed explanation goes here
     
     properties
-        Brakes                % Brake class object
-        Driveline             % Driveline class object
-        Motor                 % Motor class object
-        Chassis               % Chassis class object
-        Battery               % Battery class object
-        Suspension            % Suspension class object
-        Tire                  % Tire class object
-        DragCoefficient       % Aero drag coefficient for the car
-        FrontCrossSection     % Aerodynamic cross section (in^2)
-        Weight                % Total weight of car (lbf)
-        CG                    % Three coordinate CG location (in), 
-                              % X: From front axle back
-                              % Y: From center plane of car
-                              % Z: From the ground up                                                 
-        SprungMass            % Sprung weight of car (lbf)
-        UnsprungMass          % Two item vector for front and rear unsprung
-                              % weight of car (lbf)
-        Keq                   % Equivelent weight multiplier for car due to
-                              % rotational inertia (unitless)
-        TF = 1;               % Motor torque multiplier for endurane races
-        Regen = 0;            % Regenerative braking factor for endrance races
-        RPMLimit              % Motor rpm limit for endurance races
-        Name = '';            % Name given to car
+        Brakes
+        Driveline
+        Motor
+        Chassis
+        Battery
+        Suspension
+        Tire
+        DragCoefficient
+        FrontCrossSection
+        Weight
+        CG
+        SprungMass
+        UnsprungMass
+        Keq
+        Name = '';
     end
     
     methods
-        function C = Car(Brakes,Driveline,Motor,Chassis,Battery,Suspension,Tire,UnsprungMass,SprungMass,CG,DragC,XArea)
-            % Assign class properties
+        function C = Car(Brakes,Driveline,Motor,Chassis,Battery,Suspension,Tire,DragC,XArea)
             C.Brakes = Brakes;
             C.Driveline = Driveline;
             C.Motor = Motor;
-            C.RPMLimit = Motor.OutputCurve(end,1);
             C.Chassis = Chassis;
             C.Battery = Battery;
             C.Suspension = Suspension;
@@ -48,60 +32,37 @@ classdef Car < handle
             C.DragCoefficient = DragC;
             C.FrontCrossSection = XArea;
             
-            C.UnsprungMass = UnsprungMass;
-            C.SprungMass = SprungMass;
+            C.UnsprungMass = Brakes.UnsprungMass + Driveline.UnsprungMass + Suspension.UnsprungMass + Tire.Weight/2;
+            C.SprungMass = Battery.Weight + Brakes.SprungMass + Chassis.TotalWeight + Driveline.SprungMass + Motor.Weight + Suspension.SprungMass;
             
             C.Weight = sum(C.UnsprungMass) + C.SprungMass;
-            C.CG = CG;
+            C.CG = (Brakes.Weight.*Brakes.EffectiveCG + Driveline.Weight.*Driveline.EffectiveCG...
+                + Motor.Weight.*Motor.EffectiveCG + Chassis.TotalWeight.*Chassis.EffectiveCG...
+                + Battery.Weight.*Battery.EffectiveCG + Suspension.Weight.*Suspension.EffectiveCG...
+                + Tire.Weight.*Tire.EffectiveCG)/C.Weight;
             
-            % Determine rotational inertia multiplier
-            I = Tire.J + Brakes.J + Driveline.J; % Determine total rotational I
-            R = Tire.Radius;                     % Get tire radius  
-            M = C.Weight/32.174;                 % Get mass in slugs
-                                       
-            C.Keq = (I/(R^2*M)) + 1;             % Assumes all rotating
-                                                 % parts of non negligible
-                                                 % inertia turn at same
-                                                 % speed as wheels
+            I = Tire.J + Brakes.J + Driveline.J;
+            R = Tire.Radius;
+            M = C.Weight/32.174;
+            
+            C.Keq = (I/(R^2*M)) + 1;
 
         end      
             
         function [ LookUpTable ] = StraightAccTableGenerator( CarObject )
-            % Method StraightAccTableGenerator creates a lookup table for
-            % acceleration curves on straight sections of track.  The
-            % lookup table contains values for velocity, drag, axle rpm,
-            % motor rpm, motor torque, motor efficiency, power consumption,
-            % longitudinal Gs, lateral Gs, and whether the vehicle is at
-            % its tractive limit or not.  These values are given for each
-            % motor rpm in the motor object's motor curve.
-            
-            % Return value units:
-            % Velocity: in/s
-            % Drag: lbf
-            % Axle RPM: rev/min
-            % Motor RPM: rev/min
-            % Motor Torque: in lbf
-            % Motor Efficiency: Scaled to 1
-            % Power Consumption: in lbf/s
-            % Longitudinal Gs: Gs
-            % Lateral Gs: Gs
-            % Traction Limit: Boolean
-            
-            
-            NMotors = CarObject.Motor.NMotors; % Number of motors on the vehicle
+        
+            NMotors = CarObject.Motor.NMotors;
 
-            RHO = 0.002329; %Air density, slugs/ft^3
+            RHO = 0.002329; %slugs/ft^3
 
             RollingR = CarObject.Weight*CarObject.Tire.RollingResistance; % Rolling Resistance force for car configuration
 
             % Pull Motor RPM values from motor torque curve
             MotorRPM = CarObject.Motor.OutputCurve(:,1);
-            LimitIndex = find(MotorRPM <= CarObject.RPMLimit, 1, 'last');
-            MotorRPM = MotorRPM(1:LimitIndex,1);
             % Pull Motor Torque values from motor torque curve
-            MotorT   = CarObject.TF*NMotors*CarObject.Motor.OutputCurve(1:LimitIndex,2);  %in-lb
+            MotorT   = NMotors*CarObject.Motor.OutputCurve(:,2);  %in-lb
             % Pull Motor Efficiency values from motor torque curve
-            MotorE   = (CarObject.Motor.OutputCurve(1:LimitIndex,3));
+            MotorE   = (CarObject.Motor.OutputCurve(:,3));
             % Calculate Axle RPM for each Motor RPM value
             AxleRPM  = MotorRPM/CarObject.Driveline.GearRatio;
             % Calculate Car Velocity for each Axle RPM value
@@ -140,29 +101,7 @@ classdef Car < handle
             
         end
             
-        function [ LookUpTable ] = StraightDecTableGenerator(CarObject,Velocity,Drag) 
-            % Method StraightDecTableGenerator creates a lookup table for
-            % deceleration curves on straight sections of track.  The
-            % lookup table contains values for velocity, drag, axle rpm,
-            % motor rpm, motor torque, motor efficiency, power consumption,
-            % longitudinal Gs, lateral Gs, and whether the vehicle is at
-            % its tractive limit or not.  These values are given for each
-            % velocity and drag in the two input vectors.  These are
-            % generally assumed to come from the output of
-            % StraightAccTableGenerator
-            
-            % Return value units:
-            % Velocity: in/s
-            % Drag: lbf
-            % Axle RPM: rev/min
-            % Motor RPM: rev/min
-            % Motor Torque: in lbf
-            % Motor Efficiency: Scaled to 1
-            % Power Consumption: in lbf/s
-            % Longitudinal Gs: Gs
-            % Lateral Gs: Gs
-            % Traction Limit: Boolean
-            
+        function [ LookUpTable ] = StraightDecTableGenerator(CarObject,Velocity,Drag)
 
             RollingR = CarObject.Weight*CarObject.Tire.RollingResistance; % Rolling Resistance force for car configuration
 
@@ -201,31 +140,7 @@ classdef Car < handle
         end
         
         function [ LookUpTable ] = CornerAccTableGenerator( CarObject,R,Velocity,Drag,MotorE )
-            % Method CornerAccTableGenerator creates a lookup table for
-            % acceleration curves on curved sections of track.  The
-            % lookup table contains values for velocity, drag, axle rpm,
-            % motor rpm, motor torque, motor efficiency, power consumption,
-            % longitudinal Gs, lateral Gs, and whether the vehicle is at
-            % its tractive limit or not.  These values are given for each
-            % velocity, drag, and motor efficiency, in the three input  
-            % vectors. These are generally assumed to come from the output 
-            % of StraightAccTableGenerator.  The input R is the curved 
-            % radius in inches.
-            
-            % Return value units:
-            % Velocity: in/s
-            % Drag: lbf
-            % Axle RPM: rev/min
-            % Motor RPM: rev/min
-            % Motor Torque: in lbf
-            % Motor Efficiency: Scaled to 1
-            % Power Consumption: in lbf/s
-            % Longitudinal Gs: Gs
-            % Lateral Gs: Gs
-            % Traction Limit: Boolean
         
-            NMotors = CarObject.Motor.NMotors; % Number of motors on the vehicle
-            
             RollingR = CarObject.Weight*CarObject.Tire.RollingResistance; % Rolling Resistance force for car configuration
             
             % Pulls max lateral Gs available from tire
@@ -250,9 +165,7 @@ classdef Car < handle
             AxleT  = WheelF*CarObject.Tire.Radius;
             MotorT = AxleT/(CarObject.Driveline.GearRatio*CarObject.Driveline.Efficiency);
             % Pull available motor torque
-            MotorRPM = CarObject.Motor.OutputCurve(:,1);
-            LimitIndex = find(MotorRPM <= CarObject.RPMLimit, 1, 'last');
-            MotorTrueT = CarObject.Motor.OutputCurve(1:LimitIndex,2)*NMotors*CarObject.TF;
+            MotorTrueT = CarObject.Motor.OutputCurve(:,2);
             % Eliminate motor torques that occur at velocities above
             % available lateral Gs
             MotorTrueT(I) = [];
@@ -283,28 +196,6 @@ classdef Car < handle
         end
         
         function [ LookUpTable ] = CornerDecTableGenerator( CarObject,R,Velocity,Drag )
-            % Method CornerDecTableGenerator creates a lookup table for
-            % deceleration curves on curved sections of track.  The
-            % lookup table contains values for velocity, drag, axle rpm,
-            % motor rpm, motor torque, motor efficiency, power consumption,
-            % longitudinal Gs, lateral Gs, and whether the vehicle is at
-            % its tractive limit or not.  These values are given for each
-            % velocity and drag in the two input vectors.  
-            % These are generally assumed to come from the output of
-            % StraightAccTableGenerator.  The input R is the curved radius 
-            % in inches.
-            
-            % Return value units:
-            % Velocity: in/s
-            % Drag: lbf
-            % Axle RPM: rev/min
-            % Motor RPM: rev/min
-            % Motor Torque: in lbf
-            % Motor Efficiency: Scaled to 1
-            % Power Consumption: in lbf/s
-            % Longitudinal Gs: Gs
-            % Lateral Gs: Gs
-            % Traction Limit: Boolean
             
             RollingR = CarObject.Weight*CarObject.Tire.RollingResistance; % Rolling Resistance force for car configuration
             

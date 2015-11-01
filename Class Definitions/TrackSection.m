@@ -56,7 +56,7 @@ classdef TrackSection < handle
             if Radius  % If radius is not zero, then create curved portion
                 TS.Type = 'Curved';  %Define TS Type
                 TS.Length = Length; %Define TS Angle
-                TS.Angle = TS.Length/Radius;%Calculate path length
+                TS.Angle = abs(TS.Length/Radius);%Calculate path length
             else % Otherwise, create straight portion
                 TS.Type = 'Straight'; %Define TS Type
                 TS.Angle = 0; %Define TS ArcLength (0 for straight)
